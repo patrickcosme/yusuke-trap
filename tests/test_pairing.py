@@ -30,3 +30,22 @@ def test_list_media_filters_by_extension(tmp_path):
 
     names = sorted(p.name for p in found)
     assert names == ["a.png", "b.JPG"]
+
+
+from src.pairing import match_pairs, AUDIO_EXTS
+
+
+def test_list_media_missing_directory_returns_empty(tmp_path):
+    missing = tmp_path / "nope"
+    assert list_media(missing, AUDIO_EXTS) == []
+
+
+def test_match_pairs_no_overlap():
+    images = [Path("input/image/a.png")]
+    audios = [Path("input/audio/b.mp3")]
+
+    result = match_pairs(images, audios)
+
+    assert result.pairs == []
+    assert result.images_without_audio == [Path("input/image/a.png")]
+    assert result.audio_without_image == [Path("input/audio/b.mp3")]

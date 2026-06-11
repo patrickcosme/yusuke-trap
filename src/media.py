@@ -11,7 +11,10 @@ def audio_duration(path: Path) -> float:
 
     Raises ValueError if the file cannot be read as audio.
     """
-    audio = mutagen.File(str(path))
+    try:
+        audio = mutagen.File(str(path))
+    except mutagen.MutagenError as exc:
+        raise ValueError(f"Unsupported or unreadable audio file: {path}") from exc
     if audio is None or audio.info is None:
         raise ValueError(f"Unsupported or unreadable audio file: {path}")
     return float(audio.info.length)

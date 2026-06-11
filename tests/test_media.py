@@ -20,3 +20,16 @@ def test_audio_duration_reads_wav_length(tmp_path):
     duration = audio_duration(wav_path)
 
     assert abs(duration - 0.5) < 0.05
+
+
+import pytest
+
+from src.media import audio_duration
+
+
+def test_audio_duration_rejects_non_audio(tmp_path):
+    bad = tmp_path / "bad.mp3"
+    bad.write_text("this is not audio")
+
+    with pytest.raises(ValueError):
+        audio_duration(bad)
