@@ -792,7 +792,7 @@ def test_run_generates_and_skips(tmp_path, monkeypatch):
 - [ ] **Step 4: Run the full suite**
 
 Run: `.\.venv\Scripts\python.exe -m pytest -q`
-Expected: all tests PASS (13 total: 4 pairing, 2 media, 2 render, 5 main).
+Expected: all tests PASS (12 total: 4 pairing, 2 media, 2 render, 4 main).
 
 - [ ] **Step 5: Commit**
 
