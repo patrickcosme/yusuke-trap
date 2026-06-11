@@ -701,6 +701,185 @@ git commit -m "docs: usage instructions and verified end-to-end"
 
 ---
 
+## Task 7: Test suite hardening (edge cases)
+
+**Files:**
+- Modify: `tests/test_pairing.py`
+- Modify: `tests/test_media.py`
+- Modify: `tests/test_main.py`
+
+Adds edge-case coverage beyond the per-module happy-path tests: empty/missing
+directories, unsupported audio, no-match pairing, and `run()` orchestration
+counting with the real ffmpeg call stubbed out.
+
+- [ ] **Step 1: Add pairing edge cases**
+
+Append to `tests/test_pairing.py`:
+```python
+from src.pairing import match_pairs, AUDIO_EXTS
+
+
+def test_list_media_missing_directory_returns_empty(tmp_path):
+    missing = tmp_path / "nope"
+    assert list_media(missing, AUDIO_EXTS) == []
+
+
+def test_match_pairs_no_overlap():
+    images = [Path("input/image/a.png")]
+    audios = [Path("input/audio/b.mp3")]
+
+    result = match_pairs(images, audios)
+
+    assert result.pairs == []
+    assert result.images_without_audio == [Path("input/image/a.png")]
+    assert result.audio_without_image == [Path("input/audio/b.mp3")]
+```
+
+- [ ] **Step 2: Add media error case**
+
+Append to `tests/test_media.py`:
+```python
+import pytest
+
+from src.media import audio_duration
+
+
+def test_audio_duration_rejects_non_audio(tmp_path):
+    bad = tmp_path / "bad.mp3"
+    bad.write_text("this is not audio")
+
+    with pytest.raises(ValueError):
+        audio_duration(bad)
+```
+
+- [ ] **Step 3: Add orchestration test for `run()`**
+
+Append to `tests/test_main.py`:
+```python
+from src import main as main_module
+from src.main import run
+
+
+def test_run_generates_and_skips(tmp_path, monkeypatch):
+    image_dir = tmp_path / "image"
+    audio_dir = tmp_path / "audio"
+    output_dir = tmp_path / "output"
+    image_dir.mkdir()
+    audio_dir.mkdir()
+    output_dir.mkdir()
+    (image_dir / "song.png").write_bytes(b"x")
+    (audio_dir / "song.mp3").write_bytes(b"x")
+    (image_dir / "lonely.png").write_bytes(b"x")  # image without audio
+
+    calls = []
+    monkeypatch.setattr(main_module, "audio_duration", lambda path: 5.0)
+    monkeypatch.setattr(
+        main_module, "render",
+        lambda image, audio, output, duration: output.write_bytes(b"video"),
+    )
+
+    first = run(image_dir, audio_dir, output_dir, force=False)
+    assert first.generated == 1
+    assert first.unpaired_images == 1
+    assert (output_dir / "song.mp4").exists()
+
+    # second run: output exists, so it is skipped
+    second = run(image_dir, audio_dir, output_dir, force=False)
+    assert second.generated == 0
+    assert second.skipped == 1
+```
+
+- [ ] **Step 4: Run the full suite**
+
+Run: `.\.venv\Scripts\python.exe -m pytest -q`
+Expected: all tests PASS (13 total: 4 pairing, 2 media, 2 render, 5 main).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests/
+git commit -m "test: add edge-case coverage for pairing, media, and orchestration"
+```
+
+---
+
+## Task 8: Project documentation (CLAUDE.md)
+
+**Files:**
+- Modify: `CLAUDE.md`
+
+`CLAUDE.md` currently describes the repo as a "bare scaffold". Now that the code
+exists, replace it with real architecture and commands. (README is handled in
+Task 6.)
+
+- [ ] **Step 1: Replace `CLAUDE.md` contents**
+
+Replace the entire file with:
+```markdown
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+A Python pipeline that pairs an image and an audio file sharing the same base
+name and renders a high-quality 1080p MP4 with a Ken Burns (slow zoom) effect
+into `output/`. ffmpeg is provided by the `imageio-ffmpeg` pip package — no
+system install required.
+
+`lirycs`/`lyrics` (song lyrics) and `run-books` (character research) are manual
+working material for songwriting and are NOT consumed by the tool.
+
+## Commands
+
+All commands use the project virtualenv at `.venv`.
+
+- Setup: `python -m venv .venv` then `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`
+- Run the pipeline: `.\.venv\Scripts\python.exe -m src.main`
+  - Flags: `--force` (re-render existing MP4s), `--input-image`, `--input-audio`, `--output`
+- Run all tests: `.\.venv\Scripts\python.exe -m pytest`
+- Run a single test: `.\.venv\Scripts\python.exe -m pytest tests/test_pairing.py::test_matches_same_basename_case_insensitive -v`
+
+## Architecture
+
+The pipeline is four single-purpose modules under `src/`, composed by `main`:
+
+- `pairing.py` — pure logic. `list_media()` lists a folder filtered by extension;
+  `match_pairs()` matches images to audio by lowercased base name and returns a
+  `PairingResult` (`pairs`, `images_without_audio`, `audio_without_image`).
+- `media.py` — `audio_duration()` reads length in seconds via mutagen.
+- `render.py` — `build_ffmpeg_command()` is a pure function that assembles the
+  ffmpeg argument list (cover-crop to a 4K intermediate → `zoompan` Ken Burns →
+  1920x1080, H.264/CRF18/yuv420p, AAC 320k). `render()` runs it via subprocess
+  using the `imageio-ffmpeg` binary.
+- `main.py` — CLI/orchestration. `run()` pairs, skips existing outputs (unless
+  `--force`), renders each pair, isolates per-pair failures, and returns a
+  `Summary`. Exit code is non-zero if any pair failed.
+
+Data flow: `input/image` + `input/audio` → `pairing` → per pair: `media`
+(duration) → `render` → `output/<name>.mp4`.
+
+## Testing notes
+
+The pure logic (`pairing`, `render.build_ffmpeg_command`) is unit-tested without
+invoking ffmpeg. `media.audio_duration` is tested against a WAV generated by the
+stdlib `wave` module. `main.run()` is tested with `render`/`audio_duration`
+monkeypatched, so the suite never shells out to ffmpeg.
+```
+
+- [ ] **Step 2: Verify no stale "bare scaffold" wording remains**
+
+Run: `git diff CLAUDE.md` and confirm the old scaffold description is gone.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add CLAUDE.md
+git commit -m "docs: document architecture and commands in CLAUDE.md"
+```
+
+---
+
 ## Self-Review Notes
 
 - **Spec coverage:** pairing (Task 2), audio duration (Task 3), 1080p cover-crop + Ken Burns + H.264/CRF18/AAC (Task 4), CLI skip-existing/`--force`/summary/exit-code/unpaired reporting (Task 5), `imageio-ffmpeg`/`mutagen` deps + `.gitkeep`/`.gitignore` (Task 1), manual ffmpeg validation + README (Task 6). All spec sections map to a task.
